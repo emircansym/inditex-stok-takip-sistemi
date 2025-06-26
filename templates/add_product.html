@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}Ürün Ekle - Inditex Stok Takip{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-plus-circle me-2 text-primary"></i>
+                    Yeni Ürün Ekle
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="add-product-form">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="name" class="form-label">Ürün Adı <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="name" name="name" required>
+                                <div class="form-text">Ürünün açıklayıcı adını girin</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="sku" class="form-label">SKU (Stok Kodu) <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="sku" name="sku" required>
+                                <div class="form-text">Benzersiz ürün kodu</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="url" class="form-label">Ürün URL'si</label>
+                        <input type="url" class="form-control" id="url" name="url" placeholder="https://www.zara.com/tr/...">
+                        <div class="form-text">Ürünün web sitesindeki linkini girin (isteğe bağlı)</div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="current_stock" class="form-label">Mevcut Stok <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="current_stock" name="current_stock" min="0" value="0" required>
+                                <div class="form-text">Şu anki stok miktarı</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="min_stock" class="form-label">Minimum Stok <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="min_stock" name="min_stock" min="0" value="5" required>
+                                <div class="form-text">Uyarı verilecek minimum stok seviyesi</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Açıklama</label>
+                        <textarea class="form-control" id="description" name="description" rows="3" placeholder="Ürün hakkında ek bilgiler..."></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="email_notifications" name="email_notifications" checked>
+                            <label class="form-check-label" for="email_notifications">
+                                Bu ürün için e-posta bildirimleri gönder
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary me-md-2">
+                            <i class="bi bi-arrow-left me-1"></i>Geri Dön
+                        </a>
+                        <button type="reset" class="btn btn-outline-warning me-md-2">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Temizle
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-plus-circle me-1"></i>Ürün Ekle
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Önizleme Kartı -->
+        <div class="card mt-4" id="preview-card" style="display: none;">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-eye me-2"></i>Ürün Önizlemesi
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h6 id="preview-name" class="text-primary">-</h6>
+                        <p class="mb-1"><strong>SKU:</strong> <code id="preview-sku">-</code></p>
+                        <p class="mb-1"><strong>Mevcut Stok:</strong> <span id="preview-current" class="badge">-</span></p>
+                        <p class="mb-1"><strong>Minimum Stok:</strong> <span id="preview-min">-</span></p>
+                        <p class="mb-0"><strong>Açıklama:</strong> <span id="preview-description" class="text-muted">-</span></p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <div id="preview-status" class="badge">-</div>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                <i class="bi bi-bell-fill me-1"></i>
+                                <span id="preview-notifications">-</span>
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Form validasyonu ve önizleme
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('add-product-form');
+    const nameInput = document.getElementById('name');
+    const skuInput = document.getElementById('sku');
+    const currentStockInput = document.getElementById('current_stock');
+    const minStockInput = document.getElementById('min_stock');
+    const descriptionInput = document.getElementById('description');
+    const notificationsInput = document.getElementById('email_notifications');
+    const previewCard = document.getElementById('preview-card');
+
+    // Önizleme güncelleme fonksiyonu
+    function updatePreview() {
+        const name = nameInput.value.trim();
+        const sku = skuInput.value.trim();
+        const currentStock = parseInt(currentStockInput.value) || 0;
+        const minStock = parseInt(minStockInput.value) || 0;
+        const description = descriptionInput.value.trim();
+        const notifications = notificationsInput.checked;
+
+        if (name || sku) {
+            previewCard.style.display = 'block';
+            
+            document.getElementById('preview-name').textContent = name || 'Ürün Adı';
+            document.getElementById('preview-sku').textContent = sku || 'SKU';
+            document.getElementById('preview-current').textContent = currentStock;
+            document.getElementById('preview-min').textContent = minStock;
+            document.getElementById('preview-description').textContent = description || 'Açıklama yok';
+            document.getElementById('preview-notifications').textContent = notifications ? 'Aktif' : 'Kapalı';
+
+            // Stok durumu badgesi
+            const currentBadge = document.getElementById('preview-current');
+            const statusBadge = document.getElementById('preview-status');
+            
+            if (currentStock === 0) {
+                currentBadge.className = 'badge bg-danger';
+                statusBadge.className = 'badge bg-danger';
+                statusBadge.innerHTML = '<i class="bi bi-x-circle me-1"></i>Stokta Yok';
+            } else if (currentStock <= minStock) {
+                currentBadge.className = 'badge bg-warning';
+                statusBadge.className = 'badge bg-warning';
+                statusBadge.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Düşük Stok';
+            } else {
+                currentBadge.className = 'badge bg-success';
+                statusBadge.className = 'badge bg-success';
+                statusBadge.innerHTML = '<i class="bi bi-check-circle me-1"></i>Stokta Var';
+            }
+        } else {
+            previewCard.style.display = 'none';
+        }
+    }
+
+    // Input değişikliklerinde önizlemeyi güncelle
+    [nameInput, skuInput, currentStockInput, minStockInput, descriptionInput, notificationsInput].forEach(input => {
+        input.addEventListener('input', updatePreview);
+        input.addEventListener('change', updatePreview);
+    });
+
+    // SKU otomatik büyük harf
+    skuInput.addEventListener('input', function() {
+        this.value = this.value.toUpperCase();
+    });
+
+    // Form submit
+    form.addEventListener('submit', function(e) {
+        // Form validasyonu
+        if (!form.checkValidity()) {
+            e.preventDefault();
+            e.stopPropagation();
+            form.classList.add('was-validated');
+            return;
+        }
+        
+        // Loading durumu göster
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Ekleniyor...';
+        submitBtn.disabled = true;
+        
+        // Normal form submit - sayfa yeniden yüklenecek
+        // AJAX kaldırıldı, normal POST request kullanılıyor
+    });
+
+    // Alert gösterme fonksiyonu
+    function showAlert(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type === 'error' ? 'danger' : 'success'} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            <i class="bi bi-${type === 'error' ? 'exclamation-triangle' : 'check-circle'} me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        // Ana container'ın başına ekle
+        const mainContainer = document.querySelector('main .row');
+        mainContainer.parentNode.insertBefore(alertDiv, mainContainer);
+        
+        // 5 saniye sonra otomatik kapat
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 5000);
+    }
+});
+</script>
+{% endblock %}

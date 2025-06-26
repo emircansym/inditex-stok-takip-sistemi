@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+
+{% block title %}Raporlar - Inditex Stok Takip{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h3 mb-0">
+                <i class="bi bi-graph-up me-2 text-primary"></i>
+                Stok Raporları
+            </h1>
+            <div>
+                <button class="btn btn-outline-primary" onclick="exportReport('excel')">
+                    <i class="bi bi-file-earmark-excel me-1"></i>Excel'e Aktar
+                </button>
+                <button class="btn btn-outline-secondary" onclick="printReport()">
+                    <i class="bi bi-printer me-1"></i>Yazdır
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtreler -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-funnel me-2"></i>Filtreler
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label for="status-filter" class="form-label">Stok Durumu</label>
+                        <select class="form-select" id="status-filter" onchange="filterReports()">
+                            <option value="">Tümü</option>
+                            <option value="in-stock">Stokta Var</option>
+                            <option value="low-stock">Düşük Stok</option>
+                            <option value="out-of-stock">Stokta Yok</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="date-from" class="form-label">Başlangıç Tarihi</label>
+                        <input type="date" class="form-control" id="date-from" onchange="filterReports()">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="date-to" class="form-label">Bitiş Tarihi</label>
+                        <input type="date" class="form-control" id="date-to" onchange="filterReports()">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="sort-by" class="form-label">Sıralama</label>
+                        <select class="form-select" id="sort-by" onchange="filterReports()">
+                            <option value="name">Ürün Adı</option>
+                            <option value="sku">SKU</option>
+                            <option value="current_stock">Mevcut Stok</option>
+                            <option value="last_updated">Son Güncelleme</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Özet İstatistikler -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="bi bi-box-seam fs-1 text-primary mb-2"></i>
+                <h4 class="mb-1">{{ total_products }}</h4>
+                <p class="text-muted mb-0">Toplam Ürün</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="bi bi-arrow-up-circle fs-1 text-success mb-2"></i>
+                <h4 class="mb-1">{{ total_value|round(2) }} ₺</h4>
+                <p class="text-muted mb-0">Toplam Stok Değeri</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="bi bi-exclamation-triangle fs-1 text-warning mb-2"></i>
+                <h4 class="mb-1">{{ low_stock_count }}</h4>
+                <p class="text-muted mb-0">Düşük Stok Uyarısı</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="bi bi-x-circle fs-1 text-danger mb-2"></i>
+                <h4 class="mb-1">{{ out_of_stock_count }}</h4>
+                <p class="text-muted mb-0">Stokta Yok</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Grafik Görünümü -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Stok Durumu Dağılımı</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="stockStatusChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Aylık Stok Hareketleri</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="monthlyStockChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detaylı Rapor Tablosu -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-table me-2"></i>Detaylı Stok Raporu
+                </h6>
+                <small class="text-muted">
+                    Toplam {{ products|length }} ürün
+                </small>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0" id="report-table">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Ürün Adı</th>
+                                <th>SKU</th>
+                                <th>Mevcut Stok</th>
+                                <th>Min. Stok</th>
+                                <th>Stok Değeri</th>
+                                <th>Durum</th>
+                                <th>Son Güncelleme</th>
+                                <th>Stok Oranı</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for product in products %}
+                            <tr data-status="{{ 'out-of-stock' if product.current_stock == 0 else 'low-stock' if product.current_stock <= product.min_stock else 'in-stock' }}" 
+                                data-date="{{ product.last_updated or '2024-01-01' }}">
+                                <td>
+                                    <strong>{{ product.name }}</strong>
+                                    {% if product.url %}
+                                        <a href="{{ product.url }}" target="_blank" class="ms-2">
+                                            <i class="bi bi-link-45deg text-primary"></i>
+                                        </a>
+                                    {% endif %}
+                                </td>
+                                <td><code>{{ product.sku }}</code></td>
+                                <td>
+                                    <span class="badge bg-{{ 'danger' if product.current_stock == 0 else 'warning' if product.current_stock <= product.min_stock else 'success' }}">
+                                        {{ product.current_stock }}
+                                    </span>
+                                </td>
+                                <td>{{ product.min_stock }}</td>
+                                <td>
+                                    {% set stock_value = product.current_stock * 50 %}
+                                    {{ stock_value|round(2) }} ₺
+                                </td>
+                                <td>
+                                    {% if product.current_stock == 0 %}
+                                        <span class="badge bg-danger">
+                                            <i class="bi bi-x-circle me-1"></i>Stokta Yok
+                                        </span>
+                                    {% elif product.current_stock <= product.min_stock %}
+                                        <span class="badge bg-warning">
+                                            <i class="bi bi-exclamation-triangle me-1"></i>Düşük Stok
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-success">
+                                            <i class="bi bi-check-circle me-1"></i>Stokta Var
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <small>{{ product.last_updated_formatted or product.last_updated or '-' }}</small>
+                                </td>
+                                <td>
+                                    {% set stock_ratio = (product.current_stock / product.min_stock * 100) if product.min_stock > 0 else 0 %}
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar bg-{{ 'danger' if stock_ratio < 50 else 'warning' if stock_ratio < 100 else 'success' }}" 
+                                             style="width: {{ min(stock_ratio, 100) }}%">
+                                            {{ stock_ratio|round(0) }}%
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Yazdırma için CSS -->
+<style media="print">
+    .no-print {
+        display: none !important;
+    }
+    
+    .card {
+        border: 1px solid #ddd !important;
+        page-break-inside: avoid;
+    }
+    
+    @page {
+        margin: 1cm;
+        size: A4 landscape;
+    }
+</style>
+{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Grafik verilerini hazırla
+const stockData = {
+    inStock: {{ products|selectattr("current_stock", "gt", 0)|list|length - (products|selectattr("current_stock", "le", products[0].min_stock if products else 0)|list|length) }},
+    lowStock: {{ products|selectattr("current_stock", "le", products[0].min_stock if products else 0)|list|length }},
+    outOfStock: {{ products|selectattr("current_stock", "eq", 0)|list|length }}
+};
+
+// Stok durumu pasta grafiği
+const ctx1 = document.getElementById('stockStatusChart').getContext('2d');
+new Chart(ctx1, {
+    type: 'doughnut',
+    data: {
+        labels: ['Stokta Var', 'Düşük Stok', 'Stokta Yok'],
+        datasets: [{
+            data: [stockData.inStock, stockData.lowStock, stockData.outOfStock],
+            backgroundColor: ['#198754', '#ffc107', '#dc3545'],
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+// Aylık stok hareketleri çizgi grafiği (örnek veri)
+const ctx2 = document.getElementById('monthlyStockChart').getContext('2d');
+new Chart(ctx2, {
+    type: 'line',
+    data: {
+        labels: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran'],
+        datasets: [{
+            label: 'Toplam Stok',
+            data: [120, 135, 115, 140, 125, 160],
+            borderColor: '#0d6efd',
+            backgroundColor: 'rgba(13, 110, 253, 0.1)',
+            tension: 0.4,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
+});
+
+// Filtreleme fonksiyonu
+function filterReports() {
+    const statusFilter = document.getElementById('status-filter').value;
+    const dateFrom = document.getElementById('date-from').value;
+    const dateTo = document.getElementById('date-to').value;
+    const sortBy = document.getElementById('sort-by').value;
+    
+    const rows = Array.from(document.querySelectorAll('#report-table tbody tr'));
+    
+    // Filtreleme
+    rows.forEach(row => {
+        let show = true;
+        
+        // Durum filtresi
+        if (statusFilter && row.dataset.status !== statusFilter) {
+            show = false;
+        }
+        
+        // Tarih filtresi
+        const rowDate = row.dataset.date;
+        if (dateFrom && rowDate < dateFrom) {
+            show = false;
+        }
+        if (dateTo && rowDate > dateTo) {
+            show = false;
+        }
+        
+        row.style.display = show ? '' : 'none';
+    });
+    
+    // Sıralama
+    const tbody = document.querySelector('#report-table tbody');
+    const visibleRows = rows.filter(row => row.style.display !== 'none');
+    
+    visibleRows.sort((a, b) => {
+        let aVal, bVal;
+        
+        switch(sortBy) {
+            case 'name':
+                aVal = a.cells[0].textContent.trim();
+                bVal = b.cells[0].textContent.trim();
+                break;
+            case 'sku':
+                aVal = a.cells[1].textContent.trim();
+                bVal = b.cells[1].textContent.trim();
+                break;
+            case 'current_stock':
+                aVal = parseInt(a.cells[2].textContent);
+                bVal = parseInt(b.cells[2].textContent);
+                break;
+            case 'last_updated':
+                aVal = new Date(a.dataset.date);
+                bVal = new Date(b.dataset.date);
+                break;
+            default:
+                return 0;
+        }
+        
+        if (typeof aVal === 'string') {
+            return aVal.localeCompare(bVal, 'tr');
+        }
+        return aVal - bVal;
+    });
+    
+    // Sıralanmış satırları yeniden ekle
+    visibleRows.forEach(row => tbody.appendChild(row));
+}
+
+// Excel export fonksiyonu
+function exportReport(format) {
+    if (format === 'excel') {
+        // Basit CSV export
+        const table = document.getElementById('report-table');
+        const rows = Array.from(table.querySelectorAll('tr'));
+        const visibleRows = rows.filter(row => row.style.display !== 'none' || row.parentElement.tagName === 'THEAD');
+        
+        let csv = '';
+        visibleRows.forEach(row => {
+            const cells = Array.from(row.cells).map(cell => {
+                return '"' + cell.textContent.trim().replace(/"/g, '""') + '"';
+            });
+            csv += cells.join(',') + '\n';
+        });
+        
+        // CSV dosyasını indir
+        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'stok_raporu_' + new Date().toISOString().split('T')[0] + '.csv';
+        link.click();
+    }
+}
+
+// Yazdırma fonksiyonu
+function printReport() {
+    window.print();
+}
+
+// Sayfa yüklendiğinde bugünün tarihini varsayılan olarak ayarla
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('date-to').value = today;
+    
+    // Bir ay öncesini başlangıç tarihi yap
+    const lastMonth = new Date();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    document.getElementById('date-from').value = lastMonth.toISOString().split('T')[0];
+});
+</script>
+{% endblock %}
